@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/Project-Nessie/nessielight"
 	"github.com/Project-Nessie/nessielight/tgolf"
+	"github.com/Project-Nessie/nessielight/utils"
 	"github.com/yanzay/tbot/v2"
 )
 
@@ -138,9 +140,42 @@ func registerAdminService(server *tgolf.Server) {
 		server.EditCallbackMsgWithBtn(cq, statisBtns, "Service Control")
 		return nil
 	})
-	// !!!UNIMPLEMENTED
 	server.RegisterInlineButton("a/statistics/toptraffic", func(cq *tbot.CallbackQuery) error {
-		server.EditCallbackMsg(cq, "<i>top traffic not implemented</i>")
+		stats, err := nessielight.GetV2rayTraffic()
+		if err != nil {
+			return err
+		}
+		users, inbounds := stats.Users(), stats.Inbounds()
+		sort.Sort(users)
+		sort.Sort(inbounds)
+
+		parseValue := func(num int64) string {
+			if num < 1000 {
+				return fmt.Sprint(num, "B")
+			} else if num < 1e6 {
+				return fmt.Sprint(int(num/1e3), "KB")
+			} else if num < 1e9 {
+				return fmt.Sprint(int(num/1e6), "MB")
+			} else {
+				return fmt.Sprint(int(num/1e9), "GB")
+			}
+		}
+
+		reducer := func(msg string, v nessielight.UserTraffic) string {
+			name := v.Name
+			if v.Type == nessielight.Unregistered {
+				name = "<i>" + v.Name + "</i>"
+			}
+			return fmt.Sprintf("%s%s down <b>%s</b> up <b>%s</b>\n", msg, name,
+				parseValue(v.Downlink), parseValue(v.Uplink))
+		}
+
+		msg := "<b><u>User Traffics sorted by downlink</u></b>\n"
+		msg = utils.Reduce(users, reducer, msg)
+		msg = msg + "\n<b><u>Inbound Traffics sorted by downlink</u></b>\n"
+		msg = utils.Reduce(inbounds, reducer, msg)
+
+		server.EditCallbackMsg(cq, msg)
 		return nil
 	})
 	// !!!UNIMPLEMENTED

@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	sqldriver "database/sql/driver"
 	"fmt"
+	"regexp"
 
+	"github.com/Project-Nessie/nessielight/utils"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -67,6 +69,8 @@ type UserManager interface {
 	DeleteUser(user User) error
 	// find user by id, nil for not found
 	FindUser(id string) (User, error)
+	// find user by proxy id, nil for not found
+	FindUserByProxy(proxyid string) (User, error)
 	// generate new user by id
 	NewUser(id string) User
 	All() ([]User, error)
@@ -164,3 +168,94 @@ func ApplyUserProxy(user User) error {
 	}
 	return nil
 }
+
+type UserType int
+
+const (
+	Unregistered UserType = 0
+	Registered   UserType = 1
+	Inbound      UserType = 2
+)
+
+type UserTraffic struct {
+	ID               string
+	Name             string
+	Type             UserType
+	Uplink, Downlink int64
+}
+
+var reTraffic = regexp.MustCompile(`(.*?)>>>(.*?)>>>traffic>>>((downlink|uplink))`)
+
+func GetV2rayTraffic() (UserTraffics, error) {
+	stats, err := V2rayServiceInstance.QueryUserTraffic("", false)
+	if err != nil {
+		return nil, err
+	}
+	var traffics map[string]*UserTraffic = make(map[string]*UserTraffic)
+
+	for _, v := range stats {
+		if matches := reTraffic.FindSubmatch([]byte(v.Name)); len(matches) > 3 {
+			category := string(matches[1])
+			name, id := string(matches[2]), ""
+			if category == "user" {
+				typ := Unregistered
+				id = name
+				if user, err := UserManagerInstance.FindUserByProxy(id); err == nil && user != nil {
+					// registered
+					name = user.Name()
+					typ = Registered
+				}
+				if traffics[id] == nil {
+					traffics[id] = &UserTraffic{
+						ID:   id,
+						Name: name,
+						Type: typ,
+					}
+				}
+			} else if category == "inbound" {
+				id = "inbound-" + name
+				if traffics[id] == nil {
+					traffics[id] = &UserTraffic{
+						ID:   id,
+						Name: name,
+						Type: Inbound,
+					}
+				}
+			} else {
+				continue
+			}
+
+			if string(matches[3]) == "downlink" {
+				traffics[id].Downlink = v.Value
+			} else if string(matches[3]) == "uplink" {
+				traffics[id].Uplink = v.Value
+			}
+		}
+	}
+
+	var usertraffic []UserTraffic = make([]UserTraffic, 0, len(traffics))
+	for _, v := range traffics {
+		logger.Print(v)
+		usertraffic = append(usertraffic, *v)
+	}
+	return usertraffic, nil
+}
+
+type UserTraffics []UserTraffic
+
+func (r UserTraffics) Users() UserTraffics {
+	return utils.Filter(r, func(t UserTraffic) bool {
+		return t.Type != Inbound
+	})
+}
+
+func (r UserTraffics) Inbounds() UserTraffics {
+	return utils.Filter(r, func(t UserTraffic) bool {
+		return t.Type == Inbound
+	})
+}
+
+// default sort key
+func (a UserTraffics) Len() int           { return len(a) }
+func (a UserTraffics) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a UserTraffics) Less(i, j int) bool { return a[i].Downlink > a[j].Downlink }

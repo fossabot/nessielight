@@ -25,6 +25,16 @@ func (r *simpleUserManager) FindUser(id string) (User, error) {
 	}
 	return nil, nil
 }
+func (r *simpleUserManager) FindUserByProxy(proxyid string) (User, error) {
+	for _, v := range r.db {
+		for _, p := range v.Proxy() {
+			if p.ID() == proxyid {
+				return v, nil
+			}
+		}
+	}
+	return nil, nil
+}
 
 func (r *simpleUserManager) All() ([]User, error) {
 	var users []User = make([]User, 0, len(r.db))
