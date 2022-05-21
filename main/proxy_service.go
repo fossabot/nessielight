@@ -28,13 +28,6 @@ func registerProxyService(server *tgolf.Server) {
 		}
 		nessielight.ApplyUserProxy(user)
 		server.Sendf(cq.Message.Chat.ID, nessielight.GetUserProxyMessage(user))
-		// nessielight.V2rayServiceInstance.RemoveUser(user.ID())
-		// uuid, err := nessielight.V2rayServiceInstance.AddUser(user.ID())
-		// if err != nil {
-		// 	return err
-		// }
-		// server.Sendf(cq.Message.Chat.ID, "uuid: %s", uuid)
-		// logger.Printf("uuid: %s", uuid)
 		return nil
 	})
 	server.RegisterInlineButton("p/upd", func(cq *tbot.CallbackQuery) error {
